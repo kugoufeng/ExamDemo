@@ -138,18 +138,14 @@ public class Schedule
         {
             if (taskHangupList.size() > 0)
             {
-                List<Integer> collect =
-                    taskHangupList.stream().sorted((s1, s2) -> s1 - s2).collect(Collectors.toList());
-                taskHangupList.clear();
-                taskHangupList.addAll(collect);
-                int freeNodeId = findFreeNodeId();
-                serverTasksMap.get(freeNodeId).add(taskHangupList.get(0));
-                taskHangupList.remove(0);
-                if (taskHangupList.size() > 0)
-                {
-                    scheduleTask(threshold);
-                }
-                return ReturnCodeKeys.E013;
+               for(int i=0;i<taskHangupList.size();i++)
+               {
+                   int freeNodeId = findFreeNodeId();
+                   serverTasksMap.get(freeNodeId).add(taskHangupList.get(i));
+                   taskHangupList.remove(i);
+                    i--;
+               }
+               return ReturnCodeKeys.E013;
             }
         }
 
