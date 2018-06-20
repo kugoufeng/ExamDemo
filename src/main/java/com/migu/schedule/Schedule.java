@@ -3,6 +3,7 @@ package com.migu.schedule;
 import com.migu.schedule.constants.ReturnCodeKeys;
 import com.migu.schedule.info.TaskInfo;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,7 +29,6 @@ public class Schedule
      * 挂起的任务列表
      */
     private static volatile List<Integer> taskHangupList;
-
 
     public int init()
     {
@@ -126,8 +126,34 @@ public class Schedule
 
     public int scheduleTask(int threshold)
     {
-        // TODO 方法未实现
-        return ReturnCodeKeys.E000;
+        if (threshold <= 0)
+        {
+            return ReturnCodeKeys.E002;
+        }
+        if (serverTasksMap.size() == 0)
+        {
+            return ReturnCodeKeys.E014;
+        }
+        synchronized (this)
+        {
+            if (taskHangupList.size() > 0)
+            {
+                List<Integer> collect =
+                    taskHangupList.stream().sorted((s1, s2) -> s1 - s2).collect(Collectors.toList());
+                taskHangupList.clear();
+                taskHangupList.addAll(collect);
+                int freeNodeId = findFreeNodeId();
+                serverTasksMap.get(freeNodeId).add(taskHangupList.get(0));
+                taskHangupList.remove(0);
+                if (taskHangupList.size() > 0)
+                {
+                    scheduleTask(threshold);
+                }
+                return ReturnCodeKeys.E013;
+            }
+        }
+
+        return ReturnCodeKeys.E014;
     }
 
     public int queryTaskStatus(List<TaskInfo> tasks)
@@ -156,12 +182,50 @@ public class Schedule
         tasks.clear();
         if (taskInfoList.size() > 0)
         {
-            tasks = taskInfoList.stream()
+            List<TaskInfo> collect = taskInfoList.stream()
                 .sorted((s1, s2) -> (s1.getTaskId() - s2.getTaskId()))
                 .collect(Collectors.toList());
+            collect.forEach( s -> tasks.add(s));
         }
 
         return ReturnCodeKeys.E015;
+    }
+
+    /**
+     * 统计服务节点上的资源占用数
+     *
+     * @return java.util.Map<java.lang.Integer   ,   java.lang.Integer>
+     * @author fengjiangtao
+     */
+    private Map<Integer, Integer> countServerConsumption()
+    {
+        Map<Integer, Integer> count = new HashMap<>();
+        if (serverTasksMap.size() > 0)
+        {
+            serverTasksMap.forEach((k, v) -> count.put(k, v.stream().mapToInt(s -> taskConsumptionMap.get(s)).sum()));
+        }
+        return count;
+    }
+
+    private int findFreeNodeId()
+    {
+        Map<Integer, Integer> map = countServerConsumption();
+        if (map.size() == 0)
+        {
+            return -1;
+        }
+        List<Integer> nodeIds = new ArrayList<>();
+        ArrayList<Integer> values = new ArrayList<>(map.values());
+        List<Integer> list = values.stream().sorted((s1, s2) -> s1 - s2).collect(Collectors.toList());
+        for (Entry<Integer,Integer> entry : map.entrySet())
+        {
+            if (entry.getValue().intValue() == list.get(0).intValue())
+            {
+                nodeIds.add(entry.getKey());
+            }
+        }
+        List<Integer> collect = nodeIds.stream().sorted((s1, s2) -> s2 - s1).collect(Collectors.toList());
+        return collect.get(0);
     }
 
     private List<Integer> getAllTaskIds()
@@ -169,7 +233,7 @@ public class Schedule
         List<Integer> tasks = new ArrayList<>();
         if (taskHangupList.size() > 0)
         {
-            tasks.addAll(tasks);
+            tasks.addAll(taskHangupList);
         }
         if (serverTasksMap.size() > 0)
         {
